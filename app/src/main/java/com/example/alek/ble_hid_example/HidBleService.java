@@ -39,6 +39,8 @@ import android.util.Log;
 
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
+import java.util.List;
 import java.util.Objects;
 import java.util.UUID;
 
@@ -81,8 +83,8 @@ enum ReportField {
     REPORT_FIELD_CONTROL_BUTTON(4, 2),
     /* Keyboard */
     REPORT_FIELD_KEYBOARD_META_KEYS(6, 1),
-    REPORT_FIELD_KEYBOARD_KEYS(7, 1),
-    REPORT_FIELD_KEYBOARD_ALL(6, 2),    // REPORT_FIELD_KEYBOARD_META_KEYS + REPORT_FIELD_KEYBOARD_KEYS
+    REPORT_FIELD_KEYBOARD_KEYS(1, 1),
+    REPORT_FIELD_KEYBOARD_ALL(0, 2),    // REPORT_FIELD_KEYBOARD_META_KEYS + REPORT_FIELD_KEYBOARD_KEYS
     /* Mouse */
     REPORT_FIELD_MOUSE_BUTTONS(8, 1),
     REPORT_FIELD_MOUSE_X(9, 1),
@@ -109,9 +111,9 @@ enum ReportField {
         REPORT_FIELD_LAUNCHER_BUTTON.byte_offset = 2;
         REPORT_FIELD_CONTROL_BUTTON.byte_offset = 4;
 
-        REPORT_FIELD_KEYBOARD_META_KEYS.byte_offset = 6;
-        REPORT_FIELD_KEYBOARD_KEYS.byte_offset = 7;
-        REPORT_FIELD_KEYBOARD_ALL.byte_offset = 6;
+        REPORT_FIELD_KEYBOARD_META_KEYS.byte_offset = 0;
+        REPORT_FIELD_KEYBOARD_KEYS.byte_offset = 1;
+        REPORT_FIELD_KEYBOARD_ALL.byte_offset = 0;
 
         REPORT_FIELD_MOUSE_BUTTONS.byte_offset = 8;
         REPORT_FIELD_MOUSE_X.byte_offset = 9;
@@ -178,7 +180,7 @@ enum ReportField {
 class NotificationData {
     public final byte[] value;
     public final BluetoothDevice device;
-    public final BluetoothGattCharacteristic characteristic;
+    public BluetoothGattCharacteristic characteristic;
     public final boolean responseNeeded;
 
     NotificationData(BluetoothDevice device, BluetoothGattCharacteristic characteristic, byte[] value) {
@@ -188,6 +190,7 @@ class NotificationData {
         this.responseNeeded = false;
     }
 }
+
 
 public class HidBleService extends Service {
     private final IBinder mBinder = new LocalBinder();
@@ -199,14 +202,18 @@ public class HidBleService extends Service {
     private boolean notificationPossible;
     private BluetoothGattServer gattServer;
     private Thread check_thread = null;
+    private ArrayList<String> serviceList = new ArrayList();
+    private ArrayList<BluetoothGattService> pendingServices = new ArrayList();
     private final AdvertiseCallback advertisingCallback = new AdvertiseCallback() {
         @Override
         public void onStartSuccess(AdvertiseSettings settingsInEffect) {
             Log.i("BLE", "Advertisement started successfully");
         }
 
+
         @Override
         public void onStartFailure(int errorCode) {
+
             Log.i("BLE", "Advertisement not started - error: " + errorCode);
         }
     };
@@ -214,36 +221,82 @@ public class HidBleService extends Service {
     private byte readBatteryLevel() {
         BatteryManager batteryManager = (BatteryManager) getSystemService(BATTERY_SERVICE);
         int batteryLevel = batteryManager.getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY);
+        System.out.println("battery: " + batteryLevel);
 
-        return (byte) batteryLevel;
+        return (byte) 75;
     }
 
     public void sendNotification(ReportField rf, int value) {
         sendNotification(rf, value, SendTo.SEND_TO_ALL);
     }
 
-    private void sendNotification(ReportField rf, int value, SendTo st) {
-        // Assume one report characteristic or that the notification should be sent from the first
-        BluetoothGattCharacteristic report;
+    public void sendNotification(ReportField rf, byte[] rawBytes) {
+        sendNotification(rf, 0, SendTo.SEND_TO_ALL, rawBytes);
+    }
+
+    private static final char[] HEX_ARRAY = "0123456789ABCDEF".toCharArray();
+
+    public static String bytesToHex(byte[] bytes) {
+        char[] hexChars = new char[bytes.length * 2];
+        for (int j = 0; j < bytes.length; j++) {
+            int v = bytes[j] & 0xFF;
+            hexChars[j * 2] = HEX_ARRAY[v >>> 4];
+            hexChars[j * 2 + 1] = HEX_ARRAY[v & 0x0F];
+        }
+        return new String(hexChars);
+    }
+
+    private byte[] getArrayFromValue(ReportField rf, int value, SendTo st) {
+        Log.d("BYTE", "offset: " + String.valueOf(rf.byte_offset));
+        Log.d("BYTE", "size: " + String.valueOf(rf.byte_size));
         byte[] array = new byte[rf.byte_offset + rf.byte_size];
 
         if (devices.size() == 0) {
-            return;
+            return null;
         }
 
         if (rf.byte_offset < 0) {
-            return;
+            return null;
         }
+//        System.out.println(gattServer);
+//        for (BluetoothGattService i: gattServer.getServices()) {
+//            System.out.println(i.getUuid().toString());
+//        }
+//        System.out.println(gattServer.getService(UUID.fromString(UUIDs.SERVICE_HID)));
 
-        report = gattServer.getService(UUID.fromString(UUIDs.SERVICE_HID)).getCharacteristic(
-                UUID.fromString(UUIDs.CHAR_REPORT));
 
+//        System.out.println(report);
         Arrays.fill(array, (byte) 0);
+//        array[0] = (byte) 0x02;
+//        array[1] = (byte) 0x00;
+//        array[2] = (byte) (value & 0xff);
+
 
         for (int i = rf.byte_offset; i < rf.byte_offset + rf.byte_size; i++) {
             array[i] = (byte) (value & 0xff);
             value >>= 8;
         }
+        return array;
+    }
+
+    private void sendNotification(ReportField rf, int value, SendTo st) {
+        sendNotification(rf, value, st, null);
+    }
+
+
+    private void sendNotification(ReportField rf, int value, SendTo st, byte[] rawBytes) {
+        byte[] array;
+        if (rawBytes == null) {
+            array = getArrayFromValue(rf, value, st);
+        } else {
+            array = rawBytes;
+        }
+        if (array == null) return;
+
+        Log.d("NOTIF", "real notif starting");
+
+        BluetoothGattCharacteristic report = gattServer.getService(UUID.fromString(UUIDs.SERVICE_HID)).getCharacteristic(
+                UUID.fromString(UUIDs.CHAR_REPORT));
 
         switch (st) {
             case SEND_TO_FIRST:
@@ -263,9 +316,15 @@ public class HidBleService extends Service {
 
         if (notificationPossible) {
             NotificationData toSend = pendingNotifications.remove(0);
+//            toSend.characteristic.setValue(boop);
             toSend.characteristic.setValue(toSend.value);
+            Log.e("NOTIF1", "sending notification");
+            Log.d("NOTIF", bytesToHex(toSend.characteristic.getValue()));
+
             gattServer.notifyCharacteristicChanged(toSend.device, toSend.characteristic,
-                    toSend.responseNeeded);
+//                    toSend.responseNeeded
+                    true
+            );
             notificationPossible = false;
             return;
         }
@@ -276,6 +335,7 @@ public class HidBleService extends Service {
 
         check_thread = new Thread() {
             public void run() {
+                Log.e("THD", "thread running");
                 NotificationData toSend;
 
                 while (!notificationPossible) {
@@ -327,6 +387,7 @@ public class HidBleService extends Service {
                     }
 
                     val = (short) (m + (k << 8));
+                    Log.d("NOTIF", "sending here");
                     sendNotification(ReportField.REPORT_FIELD_KEYBOARD_ALL, (int) val, st);
                     sendNotification(ReportField.REPORT_FIELD_KEYBOARD_ALL, 0, st);
                     break;
@@ -334,12 +395,17 @@ public class HidBleService extends Service {
             }
         }
 
+        Log.d("NOTIF", "sending here too");
         sendNotification(ReportField.REPORT_FIELD_KEYBOARD_ALL, 0, st);
     }
 
     private void startAdvertising() {
         BluetoothAdapter bluetoothAdapter = BluetoothAdapter.getDefaultAdapter();
         BluetoothLeAdvertiser advertiser = bluetoothAdapter.getBluetoothLeAdvertiser();
+        Log.i("ADV1", String.valueOf(bluetoothAdapter.isLe2MPhySupported()));
+        Log.i("ADV2", String.valueOf(bluetoothAdapter.isLeCodedPhySupported()));
+        Log.i("ADV3", String.valueOf(bluetoothAdapter.isLeExtendedAdvertisingSupported()));
+        Log.i("ADV4", String.valueOf(bluetoothAdapter.isLePeriodicAdvertisingSupported()));
         AdvertiseSettings settings = new AdvertiseSettings.Builder()
                 .setAdvertiseMode(AdvertiseSettings.ADVERTISE_MODE_BALANCED)
                 .setTxPowerLevel(AdvertiseSettings.ADVERTISE_TX_POWER_MEDIUM)
@@ -383,6 +449,126 @@ public class HidBleService extends Service {
         //           ... (another Report characteristics and their descriptors)
         ////////////////////////////////////////////////////////////////////////////////////////////
         // Report Map - for basic mode
+
+        final byte USAGE_PAGE = (byte) 0x05;
+        final byte USAGE = (byte) 0x09;
+        final byte COLLECTION = (byte) 0xA1;
+        final byte REPORT_ID = (byte) 0x05;
+        final byte END_COLLECTION = (byte) 0xC0;
+        final byte LOGICAL_MIN = (byte) 0x15;
+        final byte LOGICAL_MAX = (byte) 0x25;
+        final byte REPORT_SIZE = (byte) 0x75;
+        final byte REPORT_COUNT = (byte) 0x95;
+        final byte INPUT = (byte) 0x81;
+        final byte USAGE_MIN = (byte) 0x19;
+        final byte USAGE_MAX = (byte) 0x29;
+
+        final byte[] REPORT_MAP_DEFAULT_KEYBOARD = {
+                (byte) 0x05, (byte) 0x01,                    // USAGE_PAGE (Generic Desktop)
+                (byte) 0x09, (byte) 0x06,                    // USAGE (Keyboard)
+                (byte) 0xa1, (byte) 0x01,                    // COLLECTION (Application)
+                (byte) 0x85, (byte) 0x02, /*        Report ID=2                         */
+                (byte) 0x05, (byte) 0x07,                    //   USAGE_PAGE (Keyboard)
+                (byte) 0x19, (byte) 0xe0,                    //   USAGE_MINIMUM (Keyboard LeftControl)
+                (byte) 0x29, (byte) 0xe7,                    //   USAGE_MAXIMUM (Keyboard Right GUI)
+                (byte) 0x15, (byte) 0x00,                    //   LOGICAL_MINIMUM (0)
+                (byte) 0x25, (byte) 0x01,                    //   LOGICAL_MAXIMUM (1)
+                (byte) 0x75, (byte) 0x01,                    //   REPORT_SIZE (1)
+                (byte) 0x95, (byte) 0x08,                    //   REPORT_COUNT (8)
+                (byte) 0x81, (byte) 0x02,                    //   INPUT (Data,Var,Abs)
+                (byte) 0x95, (byte) 0x01,                    //   REPORT_COUNT (1)
+                (byte) 0x75, (byte) 0x08,                    //   REPORT_SIZE (8)
+                (byte) 0x81, (byte) 0x03,                    //   INPUT (Cnst,Var,Abs)
+//                (byte) 0x95, (byte) 0x05,                    //   REPORT_COUNT (5)
+//                (byte) 0x75, (byte) 0x01,                    //   REPORT_SIZE (1)
+//                (byte) 0x05, (byte) 0x08,                    //   USAGE_PAGE (LEDs)
+//                (byte) 0x19, (byte) 0x01,                    //   USAGE_MINIMUM (Num Lock)
+//                (byte) 0x29, (byte) 0x05,                    //   USAGE_MAXIMUM (Kana)
+//                (byte) 0x91, (byte) 0x02,                    //   OUTPUT (Data,Var,Abs)
+//                (byte) 0x95, (byte) 0x01,                    //   REPORT_COUNT (1)
+//                (byte) 0x75, (byte) 0x03,                    //   REPORT_SIZE (3)
+//                (byte) 0x91, (byte) 0x03,                    //   OUTPUT (Cnst,Var,Abs)
+                (byte) 0x95, (byte) 0x06,                    //   REPORT_COUNT (6)
+                (byte) 0x75, (byte) 0x08,                    //   REPORT_SIZE (8)
+                (byte) 0x15, (byte) 0x00,                    //   LOGICAL_MINIMUM (0)
+                (byte) 0x25, (byte) 0x65,                    //   LOGICAL_MAXIMUM (101)
+                (byte) 0x05, (byte) 0x07,                    //   USAGE_PAGE (Keyboard)
+                (byte) 0x19, (byte) 0x00,                    //   USAGE_MINIMUM (Reserved (no event indicated))
+                (byte) 0x29, (byte) 0x65,                    //   USAGE_MAXIMUM (Keyboard Application)
+                (byte) 0x81, (byte) 0x00,                    //   INPUT (Data,Ary,Abs)
+                (byte) 0xc0                           // END_COLLECTION
+        };
+        
+        final byte[] REPORT_MOUSE_DEFAULT  = {
+                (byte) 0x05, (byte) 0x01,                    // USAGE_PAGE (Generic Desktop)
+                (byte) 0x09, (byte) 0x02,                    // USAGE (Mouse)
+                (byte) 0xa1, (byte) 0x01,                    // COLLECTION (Application)
+                (byte) 0x09, (byte) 0x01,                    //   USAGE (Pointer)
+                (byte) 0xa1, (byte) 0x00,                    //   COLLECTION (Physical)
+//                (byte) 0x85, (byte) 0x02, /*        Report ID=2                         */
+                (byte) 0x05, (byte) 0x09,                    //     USAGE_PAGE (Button)
+                (byte) 0x19, (byte) 0x01,                    //     USAGE_MINIMUM (Button 1)
+                (byte) 0x29, (byte) 0x03,                    //     USAGE_MAXIMUM (Button 3)
+                (byte) 0x15, (byte) 0x00,                    //     LOGICAL_MINIMUM (0)
+                (byte) 0x25, (byte) 0x01,                    //     LOGICAL_MAXIMUM (1)
+                (byte) 0x95, (byte) 0x03,                    //     REPORT_COUNT (3)
+                (byte) 0x75, (byte) 0x01,                    //     REPORT_SIZE (1)
+                (byte) 0x81, (byte) 0x02,                    //     INPUT (Data,Var,Abs)
+                (byte) 0x95, (byte) 0x01,                    //     REPORT_COUNT (1)
+                (byte) 0x75, (byte) 0x05,                    //     REPORT_SIZE (5)
+                (byte) 0x81, (byte) 0x03,                    //     INPUT (Cnst,Var,Abs)
+                (byte) 0x05, (byte) 0x01,                    //     USAGE_PAGE (Generic Desktop)
+                (byte) 0x09, (byte) 0x30,                    //     USAGE (X)
+                (byte) 0x09, (byte) 0x31,                    //     USAGE (Y)
+                (byte) 0x15, (byte) 0x81,                    //     LOGICAL_MINIMUM (-127)
+                (byte) 0x25, (byte) 0x7f,                    //     LOGICAL_MAXIMUM (127)
+                (byte) 0x75, (byte) 0x08,                    //     REPORT_SIZE (8)
+                (byte) 0x95, (byte) 0x02,                    //     REPORT_COUNT (2)
+                (byte) 0x81, (byte) 0x06,                    //     INPUT (Data,Var,Rel)
+                (byte) 0xc0,                          //   END_COLLECTION
+                (byte) 0xc0                           // END_COLLECTION
+        };
+
+
+        final byte REPORT_MAP_RYAN[] = {
+                USAGE_PAGE, (byte) 0x01,       // Usage Page (Generic Desktop)
+                USAGE, (byte) 0x06,            // Usage (Keyboard)
+                COLLECTION, (byte) 0x01,       // Collection (Application)
+                COLLECTION, (byte) 0x00,       //   Collection (Physical)
+                REPORT_ID, (byte) 0x02,        //   Report ID 2
+
+                USAGE_PAGE, (byte) 0x07,       //   Usage Page (Key Codes)
+                USAGE_MIN, (byte) 0xE0,
+                USAGE_MAX, (byte) 0xE7,
+                LOGICAL_MIN, (byte) 0x00,      //   Logical Minimum (0)
+                LOGICAL_MAX, (byte) 0x01,      //   Logical Maximum (1)
+                REPORT_SIZE, (byte) 0x01,      //   Report Size (1)
+                REPORT_COUNT, (byte) 0x08,     //   Report Count (8)
+//                USAGE, (byte) 0xE0,            //   Usage (LeftControl)
+//                USAGE, (byte) 0xE1,            //   Usage (LeftShift)
+//                USAGE, (byte) 0xE2,            //   Usage (LeftAlt)
+//                USAGE, (byte) 0xE3,            //   Usage (LeftGUI)
+//                USAGE, (byte) 0xE4,            //   Usage (RightControl)
+//                USAGE, (byte) 0xE5,            //   Usage (RightShift)
+//                USAGE, (byte) 0xE6,            //   Usage (RightAlt)
+//                USAGE, (byte) 0xE7,            //   Usage (RightGUI)
+                INPUT, (byte) 0x02,            //   Input (Data, Variable, Absolute)
+
+                USAGE_PAGE, (byte) 0x07,       //   Usage Page (Keyboard/Keypad)
+                REPORT_COUNT, (byte) 0x01,     //   Report Count (1)
+                REPORT_SIZE, (byte) 0x08,      //   Report Size (8)
+                LOGICAL_MIN, (byte) 0x00,      //   Logical Minimum (4) now 0
+                LOGICAL_MAX, (byte) 0x65,      //   Logical Maximum (223) now 101
+//                USAGE, 0x00,
+//                USAGE, 0x2c,
+                USAGE_PAGE, (byte) 0x07,       //   Usage Page (Key codes)
+                USAGE_MIN, (byte) 0x00,        //   Usage Minimum 0x04 (4) now 0
+                USAGE_MAX, (byte) 0x65,        //   Usage Maximum 0xDF (223) now 101
+                INPUT, (byte) 0x00,            //   Input 0x00 (Data, Array) now (Data, Variable, Absolute)
+                END_COLLECTION,
+                END_COLLECTION,
+        };
+
         final byte REPORT_MAP_BASIC[] = {
                 (byte) 0x05, (byte) 0x0C, /*        Usage Page (Consumer Devices)       */
                 (byte) 0x09, (byte) 0x01, /*        Usage (Consumer Control)            */
@@ -558,23 +744,25 @@ public class HidBleService extends Service {
         byte REPORT_MAP[];
 
 
-        if ((features & ReportField.REP_BASIC) == ReportField.REP_BASIC) {
-            REPORT_MAP = REPORT_MAP_BASIC;
-        } else {
-            REPORT_MAP = new byte[REPORT_MAP_START.length + REPORT_MAP_CONSUMER.length +
-                    REPORT_MAP_KEYBOARD.length + REPORT_MAP_MOUSE.length + REPORT_MAP_END.length];
+//        if ((features & ReportField.REP_BASIC) == ReportField.REP_BASIC) {
+//            REPORT_MAP = REPORT_MAP_BASIC;
+////            REPORT_MAP = REPORT_MAP_RYAN;
+//        } else {
+//            REPORT_MAP = new byte[REPORT_MAP_START.length + REPORT_MAP_CONSUMER.length +
+//                    REPORT_MAP_KEYBOARD.length + REPORT_MAP_MOUSE.length + REPORT_MAP_END.length];
+//
+//            System.arraycopy(REPORT_MAP_START, 0, REPORT_MAP, position, REPORT_MAP_START.length);
+//            position += REPORT_MAP_START.length;
+//            System.arraycopy(REPORT_MAP_CONSUMER, 0, REPORT_MAP, position, REPORT_MAP_CONSUMER.length);
+//            position += REPORT_MAP_CONSUMER.length;
+//            System.arraycopy(REPORT_MAP_KEYBOARD, 0, REPORT_MAP, position, REPORT_MAP_KEYBOARD.length);
+//            position += REPORT_MAP_KEYBOARD.length;
+//            System.arraycopy(REPORT_MAP_MOUSE, 0, REPORT_MAP, position, REPORT_MAP_MOUSE.length);
+//            position += REPORT_MAP_MOUSE.length;
+//            System.arraycopy(REPORT_MAP_END, 0, REPORT_MAP, position, REPORT_MAP_END.length);
+//        }
 
-            System.arraycopy(REPORT_MAP_START, 0, REPORT_MAP, position, REPORT_MAP_START.length);
-            position += REPORT_MAP_START.length;
-            System.arraycopy(REPORT_MAP_CONSUMER, 0, REPORT_MAP, position, REPORT_MAP_CONSUMER.length);
-            position += REPORT_MAP_CONSUMER.length;
-            System.arraycopy(REPORT_MAP_KEYBOARD, 0, REPORT_MAP, position, REPORT_MAP_KEYBOARD.length);
-            position += REPORT_MAP_KEYBOARD.length;
-            System.arraycopy(REPORT_MAP_MOUSE, 0, REPORT_MAP, position, REPORT_MAP_MOUSE.length);
-            position += REPORT_MAP_MOUSE.length;
-            System.arraycopy(REPORT_MAP_END, 0, REPORT_MAP, position, REPORT_MAP_END.length);
-        }
-
+        REPORT_MAP = REPORT_MAP_DEFAULT_KEYBOARD;
 
         // HID Service
         BluetoothGattService serviceHid = new BluetoothGattService(UUID.fromString(SERVICE_HID),
@@ -583,7 +771,7 @@ public class HidBleService extends Service {
         // Report Map characteristic
         BluetoothGattCharacteristic charReportMap = new BluetoothGattCharacteristic(
                 UUID.fromString(CHAR_REPORT_MAP),
-                BluetoothGattCharacteristic.PROPERTY_READ, PERM_READ);
+                BluetoothGattCharacteristic.PROPERTY_READ, PERMISSION_READ);
 
         charReportMap.setValue(REPORT_MAP);
 
@@ -628,7 +816,7 @@ public class HidBleService extends Service {
         serviceHid.addCharacteristic(charHidInformation);
         serviceHid.addCharacteristic(charHidControlPoint);
         serviceHid.addCharacteristic(charReport1);
-        gattServer.addService(serviceHid);
+//        gattServer.addService(serviceHid);
         ////////////////////////////////////////////////////////////////////////////////////////////
         // Device Information Service
         //                          -> PnP ID
@@ -643,7 +831,7 @@ public class HidBleService extends Service {
 
         charPnpId.setValue("\2\0\0\0\0\0\0".getBytes());
         serviceDIS.addCharacteristic(charPnpId);
-        gattServer.addService(serviceDIS);
+//        gattServer.addService(serviceDIS);
         ////////////////////////////////////////////////////////////////////////////////////////////
         // Battery Service
         //               -> Battery Level
@@ -658,7 +846,13 @@ public class HidBleService extends Service {
 
         charBatteryLevel.setValue(new byte[]{readBatteryLevel()});
         serviceBAS.addCharacteristic(charBatteryLevel);
-        gattServer.addService(serviceBAS);
+//        gattServer.addService(serviceBAS);
+        ArrayList<BluetoothGattService> ll = new ArrayList();
+//        ll.add(serviceHid);
+        ll.add(serviceBAS);
+        ll.add(serviceDIS);
+        pendingServices = ll;
+        gattServer.addService(serviceHid);
     }
 
     private void gattServerCbInit() {
@@ -779,6 +973,28 @@ public class HidBleService extends Service {
                     notificationPossible = true;
                 }
             }
+
+            @Override
+            public void onServiceAdded(int status, BluetoothGattService service) {
+                Log.e("BLE", "Pending services: "+ String.valueOf(pendingServices.size()));
+                super.onServiceAdded(status, service);
+                serviceList.add(service.getUuid().toString());
+
+                if (pendingServices.size() == 0){
+                    Log.i("BLE", "All services added");
+                    for (String s: serviceList){
+                        Log.i("BLE", s);
+                    }
+                    startAdvertising();
+                    System.out.println("ADvertising");
+                } else {
+                    Log.w("BLE", "Not all services added yet.");
+                    Log.w("BLE", String.valueOf(pendingServices));
+//                    if (pendingServices.size() > 0) {
+                        gattServer.addService(pendingServices.remove(0));
+//                    }
+                }
+            }
         };
     }
 
@@ -829,9 +1045,10 @@ public class HidBleService extends Service {
         gattServerCbInit();
         mManager = (BluetoothManager) getSystemService(Context.BLUETOOTH_SERVICE);
         gattServer = mManager.openGattServer(getBaseContext(), mGattServerCallback);
+        System.out.println("gatt");
+        System.out.println(gattServer);
         createGattDatabase(gattServer, SecurityLevel.SECURITY_LEVEL_2.ordinal(), features);
         pendingNotifications.clear();
-        startAdvertising();
     }
 
     @Override

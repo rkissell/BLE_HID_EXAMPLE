@@ -191,6 +191,15 @@ public class MainActivity extends FragmentActivity implements KeyEvent.Callback 
         mService.sendNotification(rf, value);
     }
 
+    public void sendNotification(ReportField rf, byte[] rawBytes) {
+        if (mService == null) {
+            // Service is not bound yet
+            return;
+        }
+
+        mService.sendNotification(rf, rawBytes);
+    }
+
     public void sendNotification(String s) {
         if (mService == null) {
             // Service is not bound yet
@@ -213,6 +222,9 @@ public class MainActivity extends FragmentActivity implements KeyEvent.Callback 
         super.onCreate(savedInstanceState);
         setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_PORTRAIT);
         setContentView(R.layout.activity_main);
+
+        PermissionManager permissionManager =  new PermissionManager(this);
+        permissionManager.requestRuntimePermissions();
 
         pagerAdapter = new PagerAdapter(getSupportFragmentManager());
         pager = (CustomViewPager) findViewById(R.id.viewPager);

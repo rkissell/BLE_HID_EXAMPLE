@@ -19,6 +19,7 @@ import android.graphics.Color;
 import android.os.Bundle;
 import android.support.annotation.Nullable;
 import android.support.v4.app.Fragment;
+import android.util.Log;
 import android.view.LayoutInflater;
 import android.view.MotionEvent;
 import android.view.View;
@@ -32,6 +33,7 @@ import android.widget.Spinner;
 import android.widget.TextView;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 
 import static android.view.View.INVISIBLE;
@@ -39,9 +41,14 @@ import static android.view.View.INVISIBLE;
 public class ConsumerFragment extends Fragment implements Button.OnTouchListener,
         AdapterView.OnItemSelectedListener {
 
+    int testVal = 0;
+    Thread testThread;
+    boolean testThreadRun = true;
+
     public static ConsumerFragment newInstance() {
         return new ConsumerFragment();
     }
+
 
     private void setOnTouchListenerForEach(LinearLayout layout) {
         for (int i = 0; i < layout.getChildCount(); i++) {
@@ -145,17 +152,148 @@ public class ConsumerFragment extends Fragment implements Button.OnTouchListener
         spinner_ac.setSelection(0);
     }
 
+    private static final char[] HEX_ARRAY = "0123456789ABCDEF".toCharArray();
+
+    public static String bytesToHex(byte[] bytes) {
+        char[] hexChars = new char[bytes.length * 2];
+        for (int j = 0; j < bytes.length; j++) {
+            int v = bytes[j] & 0xFF;
+            hexChars[j * 2] = HEX_ARRAY[v >>> 4];
+            hexChars[j * 2 + 1] = HEX_ARRAY[v & 0x0F];
+        }
+        return new String(hexChars);
+    }
+
     @Override
     public boolean onTouch(View v, MotionEvent event) {
-        short toSend = 0;
+        int toSend = 0;
         int value = ConsumerControlUsage.getUsage(v.getId());
-        MainActivity activity = (MainActivity) getActivity();
+
+        Log.d("CONSUMER", "value: " + String.valueOf(value));
+        final MainActivity activity = (MainActivity) getActivity();
 
         if (value == 0) {
             return false;
         }
 
         if (event.getAction() == MotionEvent.ACTION_DOWN) {
+//            testVal+=256;
+//            value=testVal;
+//            activity.sendNotification(ReportField.REPORT_FIELD_CONSUMER_CONTROL, new byte[] {0, 0x05, 0x05});
+//            activity.sendNotification(ReportField.REPORT_FIELD_CONSUMER_CONTROL, new byte[] {0, 0, 0});
+            if (testThread == null) {
+                testThread = new Thread() {
+
+                    public void sendBytes(byte[] bytes) throws InterruptedException {
+                        byte [] empty = new byte[bytes.length];
+                        Arrays.fill(empty, (byte) 0);
+                        Log.d("BYTES", bytesToHex(bytes));
+                        activity.sendNotification(ReportField.REPORT_FIELD_CONSUMER_CONTROL, bytes);
+//                        sleep(500);
+                        activity.sendNotification(ReportField.REPORT_FIELD_CONSUMER_CONTROL, empty);
+//                        sleep(500);
+                    }
+
+                    @Override
+                    public void run() {
+                        int ct = 0;
+                        try {
+                            sendBytes(new byte[]{
+                                    (byte) 0x02,
+                                    (byte) 0x00,
+                                    (byte) 0x0b,
+                                    (byte) 0x00,
+                                    (byte) 0x00,
+                                    (byte) 0x00,
+                                    (byte) 0x00,
+                                    (byte) 0x00,
+                            });
+                            sendBytes(new byte[]{
+                                    (byte) 0x00,
+                                    (byte) 0x00,
+                                    (byte) 0x08,
+                                    (byte) 0x0f,
+                                    (byte) 0x00,
+                                    (byte) 0x0f,
+                                    (byte) 0x12,
+                                    (byte) 0x2c,
+                            });
+                            sendBytes(new byte[]{
+                                    (byte) 0x02,
+                                    (byte) 0x00,
+                                    (byte) 0x07,
+                                    (byte) 0x00,
+                                    (byte) 0x00,
+                                    (byte) 0x00,
+                                    (byte) 0x00,
+                                    (byte) 0x00,
+                            });
+                            sendBytes(new byte[]{
+                                    (byte) 0x00,
+                                    (byte) 0x00,
+                                    (byte) 0x15,
+                                    (byte) 0x37,
+                                    (byte) 0x2c,
+                                    (byte) 0x00,
+                                    (byte) 0x00,
+                                    (byte) 0x00,
+                            });
+                            sendBytes(new byte[]{
+                                    (byte) 0x02,
+                                    (byte) 0x00,
+                                    (byte) 0x10,
+                                    (byte) 0x00,
+                                    (byte) 0x00,
+                                    (byte) 0x00,
+                                    (byte) 0x00,
+                                    (byte) 0x00,
+                            });
+                            sendBytes(new byte[]{
+                                    (byte) 0x00,
+                                    (byte) 0x00,
+                                    (byte) 0x0c,
+                                    (byte) 0x10,
+                                    (byte) 0x0c,
+                                    (byte) 0x28,
+                                    (byte) 0x00,
+                                    (byte) 0x00,
+                            });
+
+//                            for (int i = 101; i > 3; i--) {
+//                                for (int j = 101; j > 3; j--) {
+//                                    if (testThreadRun) {
+//                                        byte[] bytes = new byte[]{
+//                                                (byte) 0x00,
+//                                                (byte) 0x00,
+//                                                (byte) 0x08,
+//                                                (byte) 0x00,
+//                                                (byte) 0x00,
+//                                                (byte) 0x00,
+//                                                (byte) 0x00,
+//                                                (byte) 0x00,
+//                                        };
+//                                        byte [] empty = new byte[bytes.length];
+//                                        Arrays.fill(empty, (byte) 0);
+//                                        Log.d("BYTES", bytesToHex(bytes));
+//                                        activity.sendNotification(ReportField.REPORT_FIELD_CONSUMER_CONTROL, bytes);
+//                                        sleep(500);
+//                                        activity.sendNotification(ReportField.REPORT_FIELD_CONSUMER_CONTROL, empty);
+//                                        sleep(500);
+//                                    }
+//                                }
+//                            }
+                        } catch (InterruptedException e) {
+                            e.printStackTrace();
+                        }
+                    }
+                };
+                testThread.start();
+            } else {
+                testThreadRun = false;
+                testThread = null;
+            }
+
+
             toSend |= value;
         } else if (event.getAction() == MotionEvent.ACTION_UP) {
             toSend &= ~value;
@@ -163,8 +301,9 @@ public class ConsumerFragment extends Fragment implements Button.OnTouchListener
         } else {
             return false;
         }
-
-        activity.sendNotification(ReportField.REPORT_FIELD_CONSUMER_CONTROL, toSend);
+//        Log.e("CONSUMER", "toSend: " + String.valueOf(toSend));
+//        activity.sendNotification(ReportField.REPORT_FIELD_CONSUMER_CONTROL, new byte[] {0x00, 0x01});
+//        activity.sendNotification(ReportField.REPORT_FIELD_CONSUMER_CONTROL, new byte[] {0x00, 0x00});
 
         return true;
     }

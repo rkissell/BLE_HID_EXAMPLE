@@ -19,6 +19,21 @@ final class UUIDs {
     // HID related UUIDs
     public static final String SERVICE_HID = "00001812-0000-1000-8000-00805F9B34FB";
     public static final String CHAR_REPORT = "00002A4D-0000-1000-8000-00805F9B34FB";
+
+
+
+
+    //    <!--Report Map-->
+    //    <characteristic id="report_map" name="Report Map" sourceId="org.bluetooth.characteristic.report_map" uuid="2A4B">
+    //      <informativeText>Summary:  The Report Map characteristic is used to define formatting information for Input Report, Output Report, and Feature Report data transferred between a HID Device and HID Host, information on how this data can be used, and other information regarding physical aspects of the device (i.e. that the device functions as a keyboard, for example, or has multiple functions such as a keyboard and volume controls).       Only a single instance of this characteristic exists as part of a HID Service.  </informativeText>
+    //      <value length="45" type="hex" variable_length="false">05010906A101050719E029E71500250175019508810295017508810195057501050819012905910295017503910195067508150025650507190029658100C0</value>
+    //      <properties encrypted_read="true" encrypted_read_requirement="mandatory" indicate="false" indicate_requirement="excluded" notify="false" notify_requirement="excluded" read="true" read_requirement="mandatory" reliable_write="false" reliable_write_requirement="excluded" write="false" write_no_response="false" write_no_response_requirement="excluded" write_requirement="excluded"/>
+    //      <!--External Report Reference-->
+    //      <descriptor id="external_report_reference" name="External Report Reference" sourceId="org.bluetooth.descriptor.external_report_reference" uuid="2907">
+    //        <properties read="true" read_requirement="mandatory" write="false" write_requirement="excluded"/>
+    //        <value length="2" type="hex" variable_length="false"/>
+    //      </descriptor>
+    //    </characteristic>
     public static final String CHAR_REPORT_MAP = "00002A4B-0000-1000-8000-00805F9B34FB";
     public static final String CHAR_HID_INFORMATION = "00002A4A-0000-1000-8000-00805F9B34FB";
     public static final String CHAR_HID_CONTROL_POINT = "00002A4C-0000-1000-8000-00805F9B34FB";

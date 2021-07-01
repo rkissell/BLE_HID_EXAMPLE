@@ -19,6 +19,7 @@ import android.os.Bundle;
 import android.support.annotation.Nullable;
 import android.support.v4.app.Fragment;
 import android.support.v4.view.VelocityTrackerCompat;
+import android.util.Log;
 import android.view.GestureDetector;
 import android.view.LayoutInflater;
 import android.view.MotionEvent;
@@ -71,6 +72,7 @@ public class MouseFragment extends Fragment implements View.OnTouchListener {
                     new GestureDetector.SimpleOnGestureListener() {
                         @Override
                         public boolean onDoubleTap(MotionEvent e) {
+                            Log.d("MOUSE", "Double click");
                             activity.sendNotification(ReportField.REPORT_FIELD_MOUSE_BUTTONS, 0x01);
                             activity.sendNotification(ReportField.REPORT_FIELD_MOUSE_BUTTONS, 0x00);
                             return super.onDoubleTap(e);

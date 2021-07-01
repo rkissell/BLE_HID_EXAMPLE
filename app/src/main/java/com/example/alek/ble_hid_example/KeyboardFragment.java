@@ -20,6 +20,7 @@ import android.graphics.Color;
 import android.os.Bundle;
 import android.support.annotation.Nullable;
 import android.support.v4.app.Fragment;
+import android.util.Log;
 import android.view.LayoutInflater;
 import android.view.MotionEvent;
 import android.view.View;
@@ -85,6 +86,7 @@ public class KeyboardFragment extends Fragment implements Button.OnTouchListener
 
     @Override
     public boolean onTouch(View v, MotionEvent event) {
+
         short toSend = 0;
         int value = ConsumerControlUsage.getUsage(v.getId());
         MainActivity activity = (MainActivity) getActivity();
@@ -111,6 +113,7 @@ public class KeyboardFragment extends Fragment implements Button.OnTouchListener
     public void onItemSelected(AdapterView<?> parent, View view, int position, long id) {
         MainActivity activity = (MainActivity) getActivity();
         short value = 0;
+        System.out.println("onItemSelected");
 
         if (parent.getChildAt(0) != null) {
             ((TextView) parent.getChildAt(0)).setTextColor(Color.WHITE);
@@ -124,8 +127,9 @@ public class KeyboardFragment extends Fragment implements Button.OnTouchListener
                         break;
                     }
                 }
+                System.out.println("sendin...");
 
-                activity.sendNotification(ReportField.REPORT_FIELD_KEYBOARD_ALL, (int) value);
+                activity.sendNotification(ReportField.REPORT_FIELD_CONSUMER_CONTROL, (int) value);
                 activity.sendNotification(ReportField.REPORT_FIELD_KEYBOARD_ALL, 0);
             }
         }
@@ -142,8 +146,11 @@ public class KeyboardFragment extends Fragment implements Button.OnTouchListener
 
         switch (v.getId()) {
             case R.id.keyboard_button_send:
-                activity.sendNotification(((EditText) getActivity().findViewById(
-                        R.id.keyboard_edit_text)).getText().toString());
+                Log.e("SEND", "sending");
+                activity.sendNotification(ReportField.REPORT_FIELD_KEYBOARD_KEYS, 50);
+                activity.sendNotification(ReportField.REPORT_FIELD_KEYBOARD_KEYS, 0);
+//                activity.sendNotification(((EditText) getActivity().findViewById(
+//                        R.id.keyboard_edit_text)).getText().toString());
         }
     }
 }
