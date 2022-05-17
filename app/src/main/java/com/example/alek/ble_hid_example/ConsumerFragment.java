@@ -194,10 +194,69 @@ public class ConsumerFragment extends Fragment implements Button.OnTouchListener
 //                        sleep(500);
                     }
 
+                    public void sendString(String msg) throws InterruptedException {
+                        char[] ca = msg.toCharArray();
+                        boolean upperCase = false;
+                        byte [] empty = new byte[8];
+                        byte [] array = new byte[8];
+                        Arrays.fill(empty, (byte) 0);
+                        Arrays.fill(array, (byte) 0);
+                        int currentPosition = 0;
+                        List<byte []> results = new ArrayList();
+                        char lastChar = 0x00;
+                        for (int i = 0; i < ca.length; i++) {
+                            char ch = ca[i];
+                            if (Character.isUpperCase(ch)) {
+                                if (upperCase) {
+                                    array[currentPosition] = KeyboardUsage.getUsage(String.valueOf(ch).toLowerCase());
+                                } else {
+                                    upperCase = true;
+                                    if (currentPosition == 0) {
+                                        array[currentPosition] = KeyboardUsage.META_LEFT_SHIFT;
+                                        currentPosition += 1;
+                                        array[currentPosition] = 0x00;
+                                        currentPosition += 1;
+                                        array[currentPosition] = 0x00;
+                                        array[currentPosition] = KeyboardUsage.getUsage(String.valueOf(ch).toLowerCase());
+                                    } else {
+                                        currentPosition = 99;
+                                    }
+                                }
+                            } else {
+                                if (upperCase) {
+                                    currentPosition = 99;
+                                    upperCase = false;
+                                } else {
+                                    if (currentPosition < 2) {
+                                        currentPosition = 2;
+                                    }
+                                    Log.e("WTF", "" + currentPosition + " " + ch);
+                                    array[currentPosition] = KeyboardUsage.getUsage(String.valueOf(ch));
+                                }
+                            }
+                            currentPosition+=1;
+                            if (currentPosition > 7) {
+                                byte[] toPush = Arrays.copyOf(array, 8);
+                                results.add(toPush);
+                                Arrays.fill(array, (byte) 0);
+                                currentPosition = 0;
+                            }
+                        }
+                        for (byte[] i: results) {
+                            Log.d("SBYTES", bytesToHex(i));
+                        }
+
+//                        activity.sendNotification(ReportField.REPORT_FIELD_CONSUMER_CONTROL, bytes);
+//                        sleep(500);
+//                        activity.sendNotification(ReportField.REPORT_FIELD_CONSUMER_CONTROL, empty);
+//                        sleep(500);
+                    }
+
                     @Override
                     public void run() {
                         int ct = 0;
                         try {
+                            sendString("Hello Dr. Mimi");
                             sendBytes(new byte[]{
                                     (byte) 0x02,
                                     (byte) 0x00,
